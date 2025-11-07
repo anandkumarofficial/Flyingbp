@@ -13,8 +13,272 @@
   <div id="root"></div>
   
   <script type="text/babel">
-    // Yahan poora React code paste karo
-    // (Artifact wala code)
+   import React, { useState, useEffect, useRef } from 'react';
+import { Play, RotateCcw } from 'lucide-react';
+
+const FlyingGame = () => {
+  const canvasRef = useRef(null);
+  const [gameStarted, setGameStarted] = useState(false);
+  const [gameOver, setGameOver] = useState(false);
+  const [score, setScore] = useState(0);
+  const [highScore, setHighScore] = useState(0);
+  
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const playerImageRef = useRef(null);
+  
+  const gameState = useRef({
+    player: { x: 100, y: 250, velocity: 0, size: 50 },
+    pipes: [],
+    gravity: 0.6,
+    jumpForce: -10,
+    pipeGap: 180,
+    pipeWidth: 60,
+    pipeSpeed: 3,
+    frameCount: 0
+  });
+
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => {
+      playerImageRef.current = img;
+      setImageLoaded(true);
+    };
+    img.src = 'https://i.ibb.co/9ZQY9Yq/player.png'; // Replace with your PNG URL
+  }, []);
+
+  const jump = () => {
+    if (!gameStarted) {
+      setGameStarted(true);
+    }
+    if (!gameOver) {
+      gameState.current.player.velocity = gameState.current.jumpForce;
+    }
+  };
+
+  const resetGame = () => {
+    gameState.current = {
+      player: { x: 100, y: 250, velocity: 0, size: 40 },
+      pipes: [],
+      gravity: 0.6,
+      jumpForce: -10,
+      pipeGap: 180,
+      pipeWidth: 60,
+      pipeSpeed: 3,
+      frameCount: 0
+    };
+    setGameOver(false);
+    setScore(0);
+    setGameStarted(false);
+  };
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+
+    const drawPlayer = () => {
+      const { x, y, size } = gameState.current.player;
+      
+      // Draw bird body
+      ctx.fillStyle = '#FFD700';
+      ctx.beginPath();
+      ctx.arc(x, y, size / 2, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Draw wing
+      ctx.fillStyle = '#FFA500';
+      ctx.beginPath();
+      ctx.ellipse(x - 10, y, size / 3, size / 4, -0.3, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Draw eye
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.arc(x + 10, y - 5, 4, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Draw beak
+      ctx.fillStyle = '#FF6347';
+      ctx.beginPath();
+      ctx.moveTo(x + 15, y);
+      ctx.lineTo(x + 25, y - 3);
+      ctx.lineTo(x + 25, y + 3);
+      ctx.closePath();
+      ctx.fill();
+    };
+
+    const drawPipe = (pipe) => {
+      ctx.fillStyle = '#2ECC40';
+      ctx.fillRect(pipe.x, 0, pipe.width, pipe.topHeight);
+      ctx.fillRect(pipe.x, pipe.topHeight + pipe.gap, pipe.width, height);
+      
+      // Add pipe cap
+      ctx.fillStyle = '#27AE60';
+      ctx.fillRect(pipe.x - 5, pipe.topHeight - 20, pipe.width + 10, 20);
+      ctx.fillRect(pipe.x - 5, pipe.topHeight + pipe.gap, pipe.width + 10, 20);
+    };
+
+    const checkCollision = () => {
+      const { x, y, size } = gameState.current.player;
+      const playerRadius = size / 2;
+      
+      // Check ground and ceiling
+      if (y + playerRadius > height || y - playerRadius < 0) {
+        return true;
+      }
+      
+      // Check pipe collision
+      for (let pipe of gameState.current.pipes) {
+        if (x + playerRadius > pipe.x && x - playerRadius < pipe.x + pipe.width) {
+          if (y - playerRadius < pipe.topHeight || y + playerRadius > pipe.topHeight + pipe.gap) {
+            return true;
+          }
+        }
+      }
+      
+      return false;
+    };
+
+    const gameLoop = () => {
+      if (!gameStarted || gameOver) return;
+      
+      ctx.clearRect(0, 0, width, height);
+      
+      // Draw background
+      const gradient = ctx.createLinearGradient(0, 0, 0, height);
+      gradient.addColorStop(0, '#87CEEB');
+      gradient.addColorStop(1, '#E0F6FF');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+      
+      // Update player
+      gameState.current.player.velocity += gameState.current.gravity;
+      gameState.current.player.y += gameState.current.player.velocity;
+      
+      // Add new pipes
+      if (gameState.current.frameCount % 90 === 0) {
+        const topHeight = Math.random() * (height - gameState.current.pipeGap - 100) + 50;
+        gameState.current.pipes.push({
+          x: width,
+          topHeight: topHeight,
+          width: gameState.current.pipeWidth,
+          gap: gameState.current.pipeGap,
+          scored: false
+        });
+      }
+      
+      // Update and draw pipes
+      gameState.current.pipes = gameState.current.pipes.filter(pipe => {
+        pipe.x -= gameState.current.pipeSpeed;
+        
+        // Score point
+        if (!pipe.scored && pipe.x + pipe.width < gameState.current.player.x) {
+          pipe.scored = true;
+          setScore(s => {
+            const newScore = s + 1;
+            if (newScore > highScore) {
+              setHighScore(newScore);
+            }
+            return newScore;
+          });
+        }
+        
+        if (pipe.x + pipe.width > 0) {
+          drawPipe(pipe);
+          return true;
+        }
+        return false;
+      });
+      
+      drawPlayer();
+      
+      // Check collision
+      if (checkCollision()) {
+        setGameOver(true);
+      }
+      
+      gameState.current.frameCount++;
+    };
+
+    const animationId = setInterval(gameLoop, 1000 / 60);
+    
+    return () => clearInterval(animationId);
+  }, [gameStarted, gameOver, highScore]);
+
+  useEffect(() => {
+    const handleKeyPress = (e) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        jump();
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [gameStarted, gameOver]);
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-blue-400 to-blue-200 p-4">
+      <div className="mb-4 flex gap-8 text-white">
+        <div className="text-center">
+          <div className="text-sm font-semibold">Score</div>
+          <div className="text-3xl font-bold">{score}</div>
+        </div>
+        <div className="text-center">
+          <div className="text-sm font-semibold">High Score</div>
+          <div className="text-3xl font-bold">{highScore}</div>
+        </div>
+      </div>
+      
+      <div className="relative">
+        <canvas 
+          ref={canvasRef} 
+          width={600} 
+          height={500}
+          onClick={jump}
+          className="border-4 border-white rounded-lg shadow-2xl cursor-pointer"
+        />
+        
+        {!gameStarted && !gameOver && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 rounded-lg">
+            <div className="text-center text-white">
+              <Play className="w-16 h-16 mx-auto mb-4" />
+              <div className="text-2xl font-bold mb-2">Flying Bird</div>
+              <div className="text-sm">Click or press SPACE to start</div>
+            </div>
+          </div>
+        )}
+        
+        {gameOver && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 rounded-lg">
+            <div className="text-center text-white">
+              <div className="text-3xl font-bold mb-4">Game Over!</div>
+              <div className="text-xl mb-6">Score: {score}</div>
+              <button 
+                onClick={resetGame}
+                className="flex items-center gap-2 mx-auto bg-green-500 hover:bg-green-600 px-6 py-3 rounded-lg font-bold transition-colors"
+              >
+                <RotateCcw className="w-5 h-5" />
+                Play Again
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+      
+      <div className="mt-4 text-center text-white text-sm">
+        <div>Click the canvas or press SPACE to flap</div>
+        <div className="text-xs mt-1 opacity-80">Avoid the pipes and stay in the air!</div>
+      </div>
+    </div>
+  );
+};
+
+export default FlyingGame;
   </script>
 </body>
 </html>
+
